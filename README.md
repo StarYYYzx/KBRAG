@@ -53,28 +53,39 @@ flowchart LR
 ## 4. 快速开始
 
 ```bash
-# 1) 配置 API（DeepSeek 兼容 OpenAI 接口）
+# 1) 安装依赖（Python 3.11）
+pip install -r requirements.txt
+
+# 2) 下载本地模型（约 2.7 GB，不入库）
+python _download_reranker.py                     # bge-reranker-v2-m3 重排模型
+#    bge-small-zh-v1.5 中文向量模型请手动放入 models/ 目录
+
+# 3) 配置 API（兼容 OpenAI 接口，如 DeepSeek）
 #    复制 .env.example → .env，填 OPENAI_API_KEY / OPENAI_BASE_URL / OPENAI_MODEL
 
-# 2) 建索引（默认扫 Agent 教科书；--kb 指定其他目录）
+# 4) 准备语料并建索引
+#    语料因版权不入库；用 --kb 指定目录，或设环境变量 KBRAG_KB_DIR
 python main.py build --kb <知识库目录>
+#    PDF 数据源可选：设 KBRAG_PDF_SOURCES="a.pdf;b.pdf"（Windows 用 ; 分隔）
 
-# 3) 单轮问答
+# 5) 单轮问答
 python main.py query "ReAct 的核心思想是什么？"
 
-# 4) 交互式多轮对话（自动改写追问）
+# 6) 交互式多轮对话（自动改写追问）
 python main.py chat --verbose
 
-# 5) 评测回归（检索层）
-python eval/run_eval.py                          # 约 50 题回归集（增量3/4 口径）
+# 7) 评测回归（检索层）
+python eval/run_eval.py                          # 55 题中文回归集（增量3/4 口径）
 python eval/run_eval_multi.py                    # 5 题多轮追问：不改写 vs 改写 vs Multi-Query
 ```
+
+> 仓库不包含语料（教科书 md / 面试 PDF，版权原因）与模型权重（体积原因），克隆后需按上面 2、4 步自备。
 
 ## 5. 文件地图
 
 | 文件 | 职责 |
 |---|---|
-| `config.py` | 路径 / 分块 / 检索 / 重排参数；`KBRAG_USE_RERANK` 环境开关 |
+| `config.py` | 路径 / 分块 / 检索 / 重排参数；环境开关 `KBRAG_USE_RERANK`、`KBRAG_KB_DIR`、`KBRAG_PDF_SOURCES` |
 | `loader.py` `pdf_loader.py` | md 目录与 PDF 解析 + 结构化切块 |
 | `embedder.py` | bge 中文向量化（query / batch） |
 | `indexer.py` `bm25_indexer.py` | FAISS 向量索引 + jieba/bm25s 稀疏索引（惰性构建+缓存） |
@@ -103,4 +114,5 @@ python eval/run_eval_multi.py                    # 5 题多轮追问：不改写
 - 生成器目前直接调 DeepSeek API，未做答案与引用块的自动一致性校验。
 
 ---
-*学习与教学背景文档见上级目录 `01_项目拆解.md` / `02_增量需求与交付路线.md` / `对照记录_增量*`。*
+
+**License**：[MIT](LICENSE) · **Repo**：https://github.com/StarYYYzx/KBRAG
