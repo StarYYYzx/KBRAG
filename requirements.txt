@@ -1,0 +1,26 @@
+# KBRAG 运行依赖（Python 3.11）
+# 安装：pip install -r requirements.txt
+#
+# 首次使用还需下载本地模型（约 2.7 GB）：
+#   python _download_reranker.py     # bge-reranker-v2-m3 重排模型
+#   python _download_en.py           # 英文评测库模型（可选）
+# 中文向量模型 bge-small-zh-v1.5 亦需放入 models/ 目录。
+
+# 检索与索引
+numpy==2.4.6
+faiss-cpu==1.15.0
+bm25s==0.3.11
+jieba==0.42.1
+
+# 向量化与重排（自动带入 torch）
+sentence-transformers==6.0.1
+
+# 编排与生成
+langgraph==1.2.11
+openai==3.8.0
+
+# 文档解析
+pymupdf==1.28.2
+
+# 模型下载
+huggingface_hub==1.30.0

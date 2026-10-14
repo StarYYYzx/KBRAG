@@ -1,0 +1,45 @@
+' KBRAG 架构图（PlantUML）
+' 用法：plantuml architecture.puml  -> 生成 architecture.png
+' 覆盖两条 LangGraph 链路：build（建索引）与 query（问答，含多轮改写）。
+
+@startuml KBRAG_architecture
+!pragma layout smetana
+skinparam componentStyle rectangle
+skinparam defaultFontName "Microsoft YaHei"
+
+title KBRAG 个人知识库 RAG — 两条 LangGraph 链路
+
+package "BUILD 链路（一次性建索引）" {
+  [scan\nloader.py + pdf_loader.py\nmd目录 + PDF -> 结构切块] as SCAN
+  [embed\nembedder.py\nbge 中文向量化] as EMBED
+  [index\nindexer.py\nFAISS 落盘 + chunks.json] as INDEX
+  [FAISS 索引\n(ASCII 缓存目录)] as FAISS
+  [元数据 chunks.json] as META
+  SCAN --> EMBED
+  EMBED --> INDEX
+  INDEX --> FAISS
+  INDEX --> META
+}
+
+package "QUERY 链路（问答，多轮）" {
+  [exp] as QIN : question\n(可能是追问 + history)
+  [rewrite\nrewriter.py\n改写为语义自足 query\n/ Multi-Query 多样化] as REWRITE
+  [retrieve\nretriever.py\n向量+BM25 -> RRF\n(可选 CrossEncoder 精排)] as RETR
+  [generate\ngenerator.py\n带溯源上下文调 DeepSeek] as GEN
+  [检索 LRU 缓存\ncache.py] as CACHE
+  QIN --> REWRITE
+  REWRITE --> RETR
+  RETR --> GEN
+  RETR <--> CACHE
+}
+
+FAISS --> RETR : 读取向量
+META --> RETR : 读取块信息
+META --> REWRITE
+
+legend bottom
+  技术栈：Python 3.11 / LangGraph / FAISS / bm25s+jieba / bge / DeepSeek API
+  CLI：python main.py build | query | chat
+endlegend
+
+@enduml

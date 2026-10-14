@@ -1,0 +1,10 @@
+# 统一换行符，避免 Windows 下 CRLF/LF 混杂导致整文件 diff
+* text=auto eol=lf
+
+# 二进制文件不做换行转换
+*.faiss binary
+*.npy binary
+*.safetensors binary
+
+# 语言统计：排除评测数据
+eval/en_meta.jsonl linguist-vendored
