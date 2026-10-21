@@ -61,10 +61,12 @@ def main():
     from multi_set import MULTI_SET
 
     modes = [("no_rewrite", "不改写(baseline)"), ("single", "单query改写"), ("multi", "Multi-Query(3条)")]
+    n = len(MULTI_SET)
+    summary = []  # (name, hit_rate, mrr, llm, retrieve_per_q)
     for mode, name in modes:
         hits = mrrs = 0.0
         llm = retr = 0
-        print(f"\n===== zh_multi  {name}  样本: {len(MULTI_SET)} =====")
+        print(f"\n===== zh_multi  {name}  样本: {n} =====")
         for rec in MULTI_SET:
             out = _eval(rec, mode)
             hits += out["hit"]
@@ -75,13 +77,17 @@ def main():
             print(f"  [{flag}] rank={out['rank']:>1}  retrieve_n={out['retrieve_n']}  {rec['question'][:22]}")
             for q in out["query"]:
                 print(f"         query: {q[:56]}")
-        n = len(MULTI_SET)
-        print(f"  → 命中@5: {hits}/{n} = {hits/n*100:.1f}%   MRR@5: {mrrs/n:.3f}")
+        hit_rate = hits / n * 100
+        mrr = mrrs / n
+        print(f"  → 命中@5: {hits:.0f}/{n} = {hit_rate:.1f}%   MRR@5: {mrr:.3f}")
         print(f"  → 成本: LLM改写调用{llm}次 / 本组共检索{retr}次")
+        summary.append((name, hit_rate, mrr, llm, retr / n))
 
     # 成本对比汇总
     print("\n\n########## 成本与准确度汇总 ##########")
     print(f"{'模式':<20}{'命中@5':>9}{'MRR@5':>9}{'改写LLM次':>9}{'检索次/题':>10}")
+    for name, hit_rate, mrr, llm, rpq in summary:
+        print(f"{name:<20}{hit_rate:>8.1f}%{mrr:>9.3f}{llm:>9}{rpq:>9.1f}")
 
 
 if __name__ == "__main__":

@@ -12,11 +12,11 @@
 |---|---|---|
 | 多格式解析 + 引用溯源 | `loader.py` `pdf_loader.py` | md 目录 + PDF（PyMuPDF）双源；返回带 `source_file / title / section_path`，可定位到具体章节 |
 | 结构化分块 | `loader.py` | 按 **章节 > 问题** 两级切分，块 500–1500 字，支持二级 `##` 再切 |
-| 混合检索（向量 + BM25 → RRF） | `retriever.py` `bm25_indexer.py` | 中文先 jieba 切词再喂 bm25s（绕过默认英文分词）；只看名次的 RRF(k=60) 规避两路量纲冲突。**块命中@5 55%→60%，文档命中@5 65%→85%** |
-| 交叉编码器重排 | `reranker.py` | bge-reranker-v2-m3，大池召回→精排 top5。**中文块命中@5 60%→90%，MRR@5 0.492→0.875** |
+| 混合检索（向量 + BM25 → RRF） | `retriever.py` `bm25_indexer.py` | 中文先 jieba 切词再喂 bm25s（绕过默认英文分词）；只看名次的 RRF(k=60) 规避两路量纲冲突。**文档命中@5 72%→76%，MRR@5 0.513→0.580**（块命中持平；25 条中文集） |
+| 交叉编码器重排 | `reranker.py` | bge-reranker-v2-m3，大池召回→精排 top5。**中文块命中@5 64%→92%，文档命中@5 76%→100%，MRR@5 0.580→0.758** |
 | 多轮对话改写 | `rewriter.py` `graph.py` | LangGraph `rewrite` 节点把 [近 2 轮历史, 追问] 改写成语义自足 query（代词/省略还原）；命中 60%→80% |
-| Multi-Query 多样化检索 | `rewriter.rewrite_multi` `retriever.retrieve_multi` | 1 主改写句 + 2 精准关键词组；深池召回(MQ_POOL=20)+（出现次数·RRF 名次分）融合。**命中 80% / MRR 0.667** |
-| 评测回归 | `eval/` `cache.py` | `hit@k / MRR@5` 双口径；约 50 题中文回归集 + 5 题多轮复审集；检索级 LRU 缓存复用 |
+| Multi-Query 多样化检索 | `rewriter.rewrite_multi` `retriever.retrieve_multi` | 1 主改写句 + 2 精准关键词组；深池召回(MQ_POOL=20)+（出现次数·RRF 名次分）融合。**命中 80%（与单改写持平）/ MRR 0.467→0.640**（同轮对照，n=5 探索集） |
+| 评测回归 | `eval/` `cache.py` | `hit@k / MRR@5` 双口径；25 题中文 + 30 题英文（合计 55 题）回归集 + 5 题多轮复审集；检索级 LRU 缓存复用 |
 
 ## 2. 架构
 
@@ -41,14 +41,16 @@ flowchart LR
 
 ## 3. 量化结果（可直接写进简历的数字）
 
-> 口径：`hit@k` = 正确块/文档是否进 top-k；`MRR@5` = 正确块首次出现位置的倒数均值。LLM 改写出自 DeepSeek，percent 随采样浮动，横向对比以同轮对照为准。
+> 口径：当前仓库为 **295 块**知识库、**25 条中文 + 30 条英文（合计 55 条）**评测集，下表数字均由 `eval/run_eval.py` 在本仓库实测。`hit@k` = 正确块/文档是否进 top-k；`MRR@5` = 正确块首次出现位置的倒数均值。LLM 改写出自 DeepSeek，percent 随采样浮动，横向对比以同轮对照为准。
+>
+> 历史说明：增量 3/4 最初在「161 块 / 50 条」的早期语料上测得（块 60→90%、文档 65→85%、MRR 0.492→0.875）；语料扩到 295 块后重测，重排收益的量级保持一致，但具体数值以本表为准。
 
 | 增量 | 改动 | 指标变化 |
 |---|---|---|
-| 3 · 混合检索 | 纯向量 → 向量+BM25 RRF | 块命中@5 55→60%；**文档命中@5 65→85%** |
-| 4 · 重排 | 召回池 → bge-reranker 精排 | 中文 块命中@5 60→**90%**，MRR@5 0.492→**0.875** |
+| 3 · 混合检索 | 纯向量 → 向量+BM25 RRF | 文档命中@5 72→76%；MRR 0.513→0.580（块命中持平） |
+| 4 · 重排 | 召回池 → bge-reranker 精排 | 中文 块命中@5 64→**92%**，文档 76→**100%**，MRR@5 0.580→**0.758** |
 | 7 · 多轮改写 | 追问 + rewrite | 命中 60→80% |
-| 7 · Multi-Query | 单改写 → 多样化+融合 | 命中 **80%** / MRR **0.667**（压过同轮 baseline 与单改写） |
+| 7 · Multi-Query | 单改写 → 多样化+融合 | 命中 **80%**（与单改写持平）/ MRR **0.467→0.640**（同轮对照；n=5 探索集，LLM 改写随采样在 0.45–0.67 浮动） |
 
 ## 4. 快速开始
 
@@ -85,7 +87,7 @@ python eval/run_eval_multi.py                    # 5 题多轮追问：不改写
 
 | 文件 | 职责 |
 |---|---|
-| `config.py` | 路径 / 分块 / 检索 / 重排参数；环境开关 `KBRAG_USE_RERANK`、`KBRAG_KB_DIR`、`KBRAG_PDF_SOURCES` |
+| `config.py` | 路径 / 分块 / 检索 / 重排参数；环境开关 `KBRAG_USE_RERANK`、`KBRAG_MULTI_QUERY`、`KBRAG_KB_DIR`、`KBRAG_PDF_SOURCES` |
 | `loader.py` `pdf_loader.py` | md 目录与 PDF 解析 + 结构化切块 |
 | `embedder.py` | bge 中文向量化（query / batch） |
 | `indexer.py` `bm25_indexer.py` | FAISS 向量索引 + jieba/bm25s 稀疏索引（惰性构建+缓存） |
@@ -109,7 +111,7 @@ python eval/run_eval_multi.py                    # 5 题多轮追问：不改写
 
 ## 7. 已知边界（诚实标注）
 
-- Multi-Query（`retrieve_multi`）已在检索层用评测集验证；CLI `query/chat` 默认走**单 query 改写**（`retriever.retrieve`），如需启用需在 `graph.py` 换成 `rewrite_multi + retrieve_multi`。
+- Multi-Query 已接入主链路：CLI `query/chat` 默认走「多 query 改写 + 融合检索」（`rewrite_multi` → `retrieve_multi`），检索成本约为单 query 的 3 倍；设 `KBRAG_MULTI_QUERY=0` 可退回单 query 提速。
 - 语料规模小（约 300 块 / 一册教科书 + 一份面试 PDF）；大数据量下的分片、Milvus、批量向量化属规划项。
 - 生成器目前直接调 DeepSeek API，未做答案与引用块的自动一致性校验。
 

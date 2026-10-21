@@ -33,9 +33,8 @@ class RetrieverCache:
     def _key(self, query: str) -> str:
         return hashlib.sha256(query.encode("utf-8")).hexdigest()
 
-    def get(self, query: str):
-        """命中返回检索结果列表并按访问刷新 LRU；未命中返回 None。"""
-        key = self._key(query)
+    # ---- 内部：按键存取（单 query 与多 query 两条路径共用同一套 LRU 逻辑）----
+    def _get_by_key(self, key: str):
         if key not in self._store:
             self.miss += 1
             return None
@@ -43,9 +42,7 @@ class RetrieverCache:
         self._store.move_to_end(key)  # 标记为"最近使用"
         return self._store[key]["results"]
 
-    def put(self, query: str, results: list[dict]) -> None:
-        """写入检索结果，超出容量淘汰最久未用者。"""
-        key = self._key(query)
+    def _put_by_key(self, key: str, results: list[dict]) -> None:
         if key in self._store:
             self._store[key]["results"] = results
             self._store.move_to_end(key)
@@ -53,6 +50,33 @@ class RetrieverCache:
         self._store[key] = {"ts": time.time(), "results": results}
         if len(self._store) > self.capacity:
             self._store.popitem(last=False)  # 淘汰最久未用的
+
+    # ---- 单 query 路径（签名保持不变，兼容 run_eval.py 等既有调用方）----
+    def get(self, query: str):
+        """命中返回检索结果列表并按访问刷新 LRU；未命中返回 None。"""
+        return self._get_by_key(self._key(query))
+
+    def put(self, query: str, results: list[dict]) -> None:
+        """写入检索结果，超出容量淘汰最久未用者。"""
+        self._put_by_key(self._key(query), results)
+
+    # ---- 多 query 路径（增量 8：主链路默认走这条）----
+    def _key_multi(self, queries: list[str]) -> str:
+        """多 query 的键 = sha256("multi:" + 排序后拼接)。
+
+        排序 ⇒ 与 query 的生成顺序无关，集合相同即命中；
+        加 `multi:` 前缀 ⇒ 与单 query 键空间隔离：否则 ["A"] 与单条 "A" 会算出
+        同一个键，而两条路径的候选池深度不同、结果可能不一致，会互相污染。
+        """
+        return self._key("multi:" + "\n".join(sorted(queries)))
+
+    def get_multi(self, queries: list[str]):
+        """多 query 路径：命中返回融合结果，未命中返回 None。"""
+        return self._get_by_key(self._key_multi(queries))
+
+    def put_multi(self, queries: list[str], results: list[dict]) -> None:
+        """多 query 路径：写入融合结果。"""
+        self._put_by_key(self._key_multi(queries), results)
 
     def clear(self):
         self._store.clear()

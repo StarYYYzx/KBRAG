@@ -32,7 +32,8 @@ class KBState(TypedDict, total=False):
     # query 链路（含多轮对话）
     question: str          # 当前用户输入（可能是追问）
     history: list          # list[dict]，形如 [{"role","content"},...] 已完成的历史问答
-    query: str             # 改写后的语义自足 query
+    query: str             # 改写后的语义自足 query（主句，= queries[0]）
+    queries: list          # 增量8：Multi-Query 生成的 query 列表（单 query 时长度为 1）
     retrieved: list        # list[dict]
     cache_hit: bool        # 思路1：是否命中检索缓存
     answer: str
@@ -84,20 +85,37 @@ def build_graph():
 def node_rewrite(state: KBState) -> dict:
     """多轮改写：把 [近N轮历史, 追问] 改写成语义自足 query。
 
-    无历史时直接沿用 question，不做多余 LLM 调用。"""
+    增量 8：默认走 Multi-Query（1 主改写句 + 2 关键词组）；关闭开关时退回单 query。
+    queries[0] 始终是主改写句，所以 state["query"] 保持"单句"语义不变。
+    无历史时 rewrite_multi 自行降级为单条，不产生多余 LLM 调用。"""
+    if config.MULTI_QUERY:
+        queries = rewriter.rewrite_multi(state["question"], state.get("history"))
+        return {"queries": queries, "query": queries[0]}
     query = rewriter.rewrite(state["question"], state.get("history"))
-    return {"query": query}
+    return {"queries": [query], "query": query}
 
 
 def node_retrieve(state: KBState) -> dict:
-    """混合检索 + 缓存。优先命中缓存，未命中才跑检索。"""
-    query = state["query"]
+    """混合检索 + 缓存。优先命中缓存，未命中才跑检索。
+
+    增量 8：queries 长度 > 1 时走 retrieve_multi（各 query 深池召回后融合），
+    缓存键同步换成"多条 query 排序拼接"，避免多路结果被单路旧缓存顶掉。"""
+    queries = state.get("queries") or [state["query"]]
     rc = cache.get_cache()
-    cached = rc.get(query)
+
+    if len(queries) > 1:
+        cached = rc.get_multi(queries)
+        if cached is not None:
+            return {"retrieved": cached, "cache_hit": True}
+        retrieved = retriever.retrieve_multi(queries)
+        rc.put_multi(queries, retrieved)
+        return {"retrieved": retrieved, "cache_hit": False}
+
+    cached = rc.get(queries[0])
     if cached is not None:
         return {"retrieved": cached, "cache_hit": True}
-    retrieved = retriever.retrieve(query)
-    rc.put(query, retrieved)
+    retrieved = retriever.retrieve(queries[0])
+    rc.put(queries[0], retrieved)
     return {"retrieved": retrieved, "cache_hit": False}
 
 

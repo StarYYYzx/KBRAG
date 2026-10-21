@@ -38,6 +38,10 @@ TOP_K = 5
 # 故融合前先深池召回 MQ_POOL 条，融合排序用（出现次数, RRF名次分）。
 MQ_POOL = 20              # 每条 query 进入融合前的候选深度
 
+# Multi-Query 主链路开关（增量 8）：默认开启，query/chat 走"多 query 检索 + 融合"。
+# 关闭（KBRAG_MULTI_QUERY=0）时退回单 query 改写与检索，便于对照与提速。
+MULTI_QUERY = os.environ.get("KBRAG_MULTI_QUERY", "1") == "1"
+
 # ---------- 重排序（增量 4，方案 2：大池召回 → rerank 精排） ----------
 USE_RERANK = os.environ.get("KBRAG_USE_RERANK", "1") == "1"  # 是否启用重排（可用环境变量覆盖，便于评测提速）
 RERANK_POOL = 20                   # 召回到"重排池"的候选数（这里是 top20，不同于混合检索 HYBRID_POOL=20）

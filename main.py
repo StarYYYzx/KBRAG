@@ -74,6 +74,9 @@ def cmd_chat(args):
 
         if args.verbose:
             print(f"  [rewrite→] {rewritten}   缓存命中: {result.get('cache_hit')}")
+            qs = result.get("queries") or []
+            if len(qs) > 1:
+                print(f"  [multi-query ×{len(qs)}] " + " | ".join(qs[1:]))
         print("\n助手: " + answer)
         print("\n==== 参考资料 ====")
         show_retrieved(result.get("retrieved", []))
